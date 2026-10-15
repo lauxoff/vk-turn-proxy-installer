@@ -562,7 +562,7 @@ MTU = ${CLIENT_MTU}
 PublicKey = $(printf '%s' "$WG_SERVER_PRIV" | wg pubkey)
 PresharedKey = ${PSK}
 Endpoint = 127.0.0.1:${LOCAL_PROXY_PORT}
-AllowedIPs = 0.0.0.0/0, ::/0
+AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
 EOF
   chmod 600 "$CLIENT_CONF"
@@ -684,10 +684,12 @@ ${B}── Порядок подключения ──────────�
 
 ${B}── Если нет интернета ──────────────────────────────────────────────────${N}
   Проверить на VPS:   ${C}wg show ${WG_IFACE}${N}                        (нужен latest handshake, rx/tx > 0)
+  Нет handshake/rx:   проверьте профиль клиента, ключи, Endpoint и подключение proxy
+  Есть handshake:     проверьте счётчики FORWARD и NAT ниже
   Счётчики NAT:       ${C}iptables -L FORWARD -n -v${N}          (должны расти с нуля)
   Лог службы:         ${C}journalctl -u vk-turn-proxy -n 50${N}
   ${Y}«message authentication failed» в логе${N} = не совпал WRAP-ключ
-  ${Y}пусто в FORWARD${N} = трафик не доходит до тоннеля (проверьте Endpoint)
+  ${Y}пусто в FORWARD${N} = нет клиентских пакетов; сначала проверьте handshake
 
 ${B}── Порты ───────────────────────────────────────────────────────────────${N}
   UDP ${TURN_PORT}  — сюда стучится приложение (открыт в iptables INPUT${Y}; проверьте и firewall хостера${N})
