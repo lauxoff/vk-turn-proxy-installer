@@ -1,10 +1,15 @@
 # vk-turn-proxy-installer
 
 Установка VK TURN Proxy (режим SRTP+WRAP) поверх WireGuard на VPS одним скриптом.
-В конце скрипт выводит всё, что нужно ввести в приложении на iPhone.
+В конце скрипт выводит параметры и конфиг для клиентского приложения.
+
+## Проекты и приложение
+
+- Оригинальный проект `vk-turn-proxy`: [cacggghp/vk-turn-proxy](https://github.com/cacggghp/vk-turn-proxy).
+- Android-приложение: [MYSOREZ/vk-turn-proxy-android](https://github.com/MYSOREZ/vk-turn-proxy-android). Инструкции по установке приложения и настройке клиента смотрите в его README.
 
 ```
-iPhone (WireGuard) → 127.0.0.1:9000 (локально в приложении)
+Android-клиент → 127.0.0.1:9000 (локальный порт прокси)
   → TURN/DTLS + WRAP → <VPS>:56000
     → vk-turn-proxy → 127.0.0.1:51820 (WireGuard) → MASQUERADE → интернет
 ```
