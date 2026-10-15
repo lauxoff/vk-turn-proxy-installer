@@ -7,6 +7,7 @@
 
 - Оригинальный проект `vk-turn-proxy`: [cacggghp/vk-turn-proxy](https://github.com/cacggghp/vk-turn-proxy).
 - Android-приложение: [MYSOREZ/vk-turn-proxy-android](https://github.com/MYSOREZ/vk-turn-proxy-android). Инструкции по установке приложения и настройке клиента смотрите в его README.
+- Приложение для iPhone в TestFlight: [VK TURN Proxy для iOS](https://testflight.apple.com/join/ANm6cmDv).
 
 ```
 Android-клиент → 127.0.0.1:9000 (локальный порт прокси)
