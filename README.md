@@ -12,16 +12,17 @@ iPhone (WireGuard) → 127.0.0.1:9000 (локально в приложении)
 ## Требования
 
 - Debian/Ubuntu, root
-- Серверная сборка vk-turn-proxy **с поддержкой `-wrap`** (скрипт её не скачивает)
+- Для SRTP+WRAP скрипт автоматически скачивает серверный бинарник из [Moroka8/vk-turn-proxy](https://github.com/Moroka8/vk-turn-proxy) (версия `v1.10.1`) и проверяет SHA-256.
+- Для другой сборки можно указать `WRAP_BIN_SOURCE=/путь/к/server`; бинарник должен поддерживать флаг `-wrap-key`.
 
 ## Установка
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/lauxoff/vk-turn-proxy-installer/main/install-vk-turn-proxy.sh
-sudo WRAP_BIN_SOURCE=/путь/к/server bash install-vk-turn-proxy.sh
+sudo bash install-vk-turn-proxy.sh
 ```
 
-Если WRAP-сборка уже лежит в `/opt/vk-turn-proxy/server`, `WRAP_BIN_SOURCE` не нужен.
+Если WRAP-сборка уже лежит в `/opt/vk-turn-proxy/server`, она будет использована без скачивания. `WRAP_BIN_SOURCE` позволяет заменить её своей сборкой.
 
 ## Опции
 
@@ -38,7 +39,8 @@ sudo WRAP_BIN_SOURCE=/путь/к/server bash install-vk-turn-proxy.sh
 
 ## Что делает скрипт
 
-- ставит `wireguard-tools`, `iptables`, `curl` при необходимости;
+- ставит `wireguard-tools`, `iptables`, `curl` и `coreutils` при необходимости;
+- скачивает подходящую Linux-сборку WRAP из закреплённого релиза и проверяет её SHA-256;
 - настраивает `wg0` (сохраняя ключ сервера и других пиров), NAT, FORWARD и входящий UDP на TURN-порт (включая ufw);
 - создаёт systemd-службу `vk-turn-proxy` с WRAP-ключом (существующий ключ сохраняется);
 - пишет клиентский конфиг в `/root/vpn-clients/` и выводит параметры, конфиг и QR-код (если есть `qrencode`).

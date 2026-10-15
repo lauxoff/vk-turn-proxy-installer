@@ -42,10 +42,10 @@ WG_CONF="$WG_DIR/${WG_IFACE}.conf"
 CLIENTS_DIR="${CLIENTS_DIR:-/root/vpn-clients}"
 CLIENT_CONF="${CLIENT_CONF:-$CLIENTS_DIR/wg0-client-iphone-turn.conf}"
 
-# Источник WRAP-бинарника. По умолчанию — уже установленный (в нём есть -wrap).
-# Стоковый релиз upstream WRAP НЕ поддерживает, поэтому если кастомного нет,
-# скрипт честно остановится, а не подложит несовместимый бинарь.
+# Источник WRAP-бинарника. Если он не задан и подходящий бинарь не установлен,
+# скрипт скачает закреплённый Linux-релиз совместимого форка и проверит SHA-256.
 WRAP_BIN_SOURCE="${WRAP_BIN_SOURCE:-}"
+WRAP_BIN_RELEASE="v1.10.1"
 
 DRY_RUN=0
 PRINT_ONLY=0
@@ -153,16 +153,16 @@ fi
 # Инструменты ставим ДО определения IP: на чистом сервере curl может не быть.
 HAVE_WG=1
 if (( ! PRINT_ONLY )); then
-  for tool in wg wg-quick iptables curl ss; do
+  for tool in wg wg-quick iptables curl ss sha256sum; do
     command -v "$tool" >/dev/null 2>&1 || MISSING_TOOLS="${MISSING_TOOLS:-} $tool"
   done
   if [[ -n "${MISSING_TOOLS:-}" ]]; then
     command -v apt-get >/dev/null 2>&1 || die "Не хватает:$MISSING_TOOLS. Автоустановка поддерживается только на Debian/Ubuntu."
     info "Доустанавливаю:$MISSING_TOOLS"
     run env DEBIAN_FRONTEND=noninteractive apt-get update -qq
-    run env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wireguard-tools iptables iproute2 curl
+    run env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wireguard-tools iptables iproute2 curl coreutils
   fi
-  for tool in wg wg-quick iptables curl ss; do
+  for tool in wg wg-quick iptables curl ss sha256sum; do
     command -v "$tool" >/dev/null 2>&1 || { (( DRY_RUN )) || die "Не найден $tool после установки."; }
   done
 fi
@@ -245,6 +245,74 @@ binary_supports_wrap() {
   grep -q -- '-wrap-key' <<<"$out"
 }
 
+select_wrap_release_asset() {
+  local arch
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64|amd64)
+      WRAP_BIN_ASSET="server-linux-amd64"
+      WRAP_BIN_SHA256="86f650b7222dc8143e5e984469fd51f13bbf9f580e4a5cfc3eff3e9f3fc05c60"
+      ;;
+    aarch64|arm64)
+      WRAP_BIN_ASSET="server-linux-arm64"
+      WRAP_BIN_SHA256="5cfc4966a8cda90ab1a3ba56873202ca0782cb4ac4e9364e4fac1e36352e5d04"
+      ;;
+    armv7l|armv7)
+      WRAP_BIN_ASSET="server-linux-arm"
+      WRAP_BIN_SHA256="7c76e766fa9c4733b9300e34ef015b6d8a040a47a14bf9c66284abef330ed6f4"
+      ;;
+    i386|i486|i586|i686)
+      WRAP_BIN_ASSET="server-linux-386"
+      WRAP_BIN_SHA256="a1df9d6d11f4ab26f7a699f74916f0d9e694ea4c73e8cfce7a9bd49ce1c1597b"
+      ;;
+    mips)
+      WRAP_BIN_ASSET="server-linux-mips"
+      WRAP_BIN_SHA256="1a204f800cfa5d03132d86076480c93bca48d7b2f50bcf77513b05585b716006"
+      ;;
+    mipsel|mipsle)
+      WRAP_BIN_ASSET="server-linux-mipsle"
+      WRAP_BIN_SHA256="3df2f2663baaa5e6994abc2529db1eedfd03bbb295da204804822b4d2fe11d10"
+      ;;
+    mips64el|mips64le)
+      WRAP_BIN_ASSET="server-linux-mips64le"
+      WRAP_BIN_SHA256="a7f5c39bb001e9e5412a76515ea6fb045d7ff79e302eefee1b3bcb18fadf2adc"
+      ;;
+    riscv64)
+      WRAP_BIN_ASSET="server-linux-riscv64"
+      WRAP_BIN_SHA256="631472b5c267c9fd0f5772f9d9325579790b609af03037604ff8d17fdff30901"
+      ;;
+    *)
+      die "Нет WRAP-релиза для архитектуры $arch. Укажите WRAP_BIN_SOURCE=/путь/к/server."
+      ;;
+  esac
+  WRAP_BIN_URL="https://github.com/Moroka8/vk-turn-proxy/releases/download/${WRAP_BIN_RELEASE}/${WRAP_BIN_ASSET}"
+}
+
+download_wrap_binary() {
+  local tmp actual_sha bin_dir="${BIN_PATH%/*}"
+  [[ "$bin_dir" == "$BIN_PATH" ]] && bin_dir="."
+  install -d -m 755 "$bin_dir"
+  tmp="$(mktemp "$bin_dir/.server.XXXXXX")"
+  if ! curl --fail --location --silent --show-error --retry 3 --connect-timeout 10 --max-time 300 \
+    --output "$tmp" "$WRAP_BIN_URL"; then
+    rm -f "$tmp"
+    die "Не удалось скачать WRAP-бинарь: $WRAP_BIN_URL"
+  fi
+  actual_sha="$(sha256sum "$tmp" | awk '{print $1}')"
+  if [[ "$actual_sha" != "$WRAP_BIN_SHA256" ]]; then
+    rm -f "$tmp"
+    die "SHA-256 загруженного WRAP-бинаря не совпал: ожидался $WRAP_BIN_SHA256, получен $actual_sha."
+  fi
+  chmod 755 "$tmp"
+  if ! binary_supports_wrap "$tmp"; then
+    rm -f "$tmp"
+    die "Загруженный бинарь не содержит обязательный флаг -wrap-key."
+  fi
+  [[ -f "$BIN_PATH" ]] && cp -a "$BIN_PATH" "$BIN_PATH.bak.$(date +%F-%H%M%S)"
+  mv -f "$tmp" "$BIN_PATH"
+  ok "Скачан WRAP-бинарь ${WRAP_BIN_RELEASE} (${WRAP_BIN_ASSET}); SHA-256 проверен"
+}
+
 if (( PRINT_ONLY )); then
   info "пропускаю (--print-only)"
 elif [[ -n "$WRAP_BIN_SOURCE" ]]; then
@@ -262,16 +330,11 @@ elif [[ -n "$WRAP_BIN_SOURCE" ]]; then
 elif binary_supports_wrap "$BIN_PATH"; then
   ok "Уже установлен WRAP-бинарь: $BIN_PATH"
 elif (( DRY_RUN )); then
-  warn "[dry-run] WRAP-бинарь не найден — реальный запуск остановится здесь (нужен WRAP_BIN_SOURCE)."
+  select_wrap_release_asset
+  info "[dry-run] скачаю ${WRAP_BIN_URL} -> $BIN_PATH и проверю SHA-256"
 else
-  die "Не найден бинарь с поддержкой -wrap.
-  Стоковый релиз cacggghp/vk-turn-proxy флаг -wrap НЕ поддерживает, поэтому
-  автоматически скачать его нельзя — это сломает режим SRTP+WRAP в приложении.
-  Варианты:
-    1) положить свой WRAP-бинарь и запустить:
-         WRAP_BIN_SOURCE=/путь/к/server bash $0
-    2) если приложение умеет обычный режим без WRAP — уберите -wrap из ExecStart
-       в $SERVICE_PATH вручную."
+  select_wrap_release_asset
+  download_wrap_binary
 fi
 
 #───────────────────────────────────────────────────────────────────────────────
