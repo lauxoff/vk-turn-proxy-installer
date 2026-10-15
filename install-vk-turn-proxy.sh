@@ -631,73 +631,45 @@ fi
 #───────────────────────────────────────────────────────────────────────────────
 SERVER_PUB_DISPLAY="${SERVER_PUB:-$(printf '%s' "${WG_SERVER_PRIV:-}" | wg pubkey 2>/dev/null || echo '<см. сервер>')}"
 [[ "$SERVER_PUB_DISPLAY" == *"="* ]] || SERVER_PUB_DISPLAY="<запустите без --dry-run>"
-
-cat <<EOF
-
-
-${B}╔══════════════════════════════════════════════════════════════════════════╗
-║          ГОТОВО. ЧТО ВВОДИТЬ В ПРИЛОЖЕНИИ НА iPHONE                      ║
-╚══════════════════════════════════════════════════════════════════════════╝${N}
-
-${B}── Экран Transport ──────────────────────────────────────────────────────${N}
-  Адрес сервера          ${C}${PUBLIC_IP}:${TURN_PORT}${N}
-  TURN server (optional) ${C}оставить пустым${N}
-  Server mode            ${C}SRTP+WRAP${N}        ${Y}← выбрать именно это${N}
-  Режим WRAP             ${C}${WRAP_KEY}${N}
-                         ${Y}← вставить ключ, если есть отдельное поле${N}
-  Use UDP transport      ${C}выключено${N}        (если не работает — включить)
-  Connections            ${C}30${N}               (в пределах 30–50)
-  Cred pool cooldown     ${C}150${N}
-
-${B}── Экран WireGuard ──────────────────────────────────────────────────────${N}
-  Server public key      ${C}${SERVER_PUB_DISPLAY}${N}
-                         ${Y}← вставить КОПИРОВАНИЕМ, не набирать руками${N}
-  Client address         ${C}${WG_CLIENT_IP}/32${N}
-  DNS                    ${C}${DNS_SERVERS}${N}
-  Endpoint / адрес WG    ${C}127.0.0.1:${LOCAL_PROXY_PORT}${N}   ${Y}← ОБЯЗАТЕЛЬНО локальный!${N}
-  MTU                    ${C}${CLIENT_MTU}${N}
-
-${B}── Приватный ключ клиента ───────────────────────────────────────────────${N}
-  Возьмите из файла:     ${C}${CLIENT_CONF}${N}
-EOF
-if (( DRY_RUN )); then
-  printf '  %s\n' "${Y}(в dry-run файл не создаётся)${N}"
-elif [[ -r "$CLIENT_CONF" ]]; then
-  printf '  PrivateKey:            %s\n' "${C}$(cfg_value "$CLIENT_CONF" PrivateKey)${N}"
-  printf '  PresharedKey:          %s\n' "${C}$(cfg_value "$CLIENT_CONF" PresharedKey)${N}"
-  printf '\n%s\n' "${B}── Полный клиентский конфиг (можно импортировать целиком) ──────────────${N}"
-  sed 's/^/  /' "$CLIENT_CONF"
-  if command -v qrencode >/dev/null 2>&1; then
-    printf '\n%s\n' "${B}── QR-код конфига ───────────────────────────────────────────────────────${N}"
-    qrencode -t ansiutf8 < "$CLIENT_CONF" || true
-  fi
-else
-  printf '  %s\n' "${Y}(файл $CLIENT_CONF не найден — запустите установку)${N}"
+CLIENT_PRIV_DISPLAY="<нет клиентского конфига>"
+CLIENT_PSK_DISPLAY="<нет клиентского конфига>"
+if [[ -r "$CLIENT_CONF" ]]; then
+  CLIENT_PRIV_DISPLAY="$(cfg_value "$CLIENT_CONF" PrivateKey)"
+  CLIENT_PSK_DISPLAY="$(cfg_value "$CLIENT_CONF" PresharedKey)"
+elif (( DRY_RUN )); then
+  CLIENT_PRIV_DISPLAY="<создастся при установке>"
+  CLIENT_PSK_DISPLAY="<создастся при установке>"
 fi
+
 cat <<EOF
 
-${B}── Порядок подключения ──────────────────────────────────────────────────${N}
-  1) Сохранить настройки в приложении
-  2) Запустить прокси, дождаться ${C}Established DTLS connection${N}
-  3) Включить VPN
-  4) Нажать «Сохранить», добавив приложение в исключения VPN
 
-${B}── Если нет интернета ──────────────────────────────────────────────────${N}
-  Проверить на VPS:   ${C}wg show ${WG_IFACE}${N}                        (нужен latest handshake, rx/tx > 0)
-  Нет handshake/rx:   проверьте профиль клиента, ключи, Endpoint и подключение proxy
-  Есть handshake:     проверьте счётчики FORWARD и NAT ниже
-  Счётчики NAT:       ${C}iptables -L FORWARD -n -v${N}          (должны расти с нуля)
-  Лог службы:         ${C}journalctl -u vk-turn-proxy -n 50${N}
-  ${Y}«message authentication failed» в логе${N} = не совпал WRAP-ключ
-  ${Y}пусто в FORWARD${N} = нет клиентских пакетов; сначала проверьте handshake
+${B}НАСТРОЙКИ ПОДКЛЮЧЕНИЯ В ПРИЛОЖЕНИИ${N}
 
-${B}── Порты ───────────────────────────────────────────────────────────────${N}
-  UDP ${TURN_PORT}  — сюда стучится приложение (открыт в iptables INPUT${Y}; проверьте и firewall хостера${N})
-  UDP ${WG_PORT}  — WireGuard (наружу не нужен, но не мешает)
-  127.0.0.1:${LOCAL_PROXY_PORT} — локальный порт внутри приложения
+Сначала заполните раздел Transport:
+  Server address       ${C}${PUBLIC_IP}:${TURN_PORT}${N}
+  TURN server          оставить пустым
+  Server mode          ${C}SRTP+WRAP${N}
+  WRAP key             ${C}${WRAP_KEY}${N}
+  Use UDP transport    выключено
+  Connections          30
+  Cred pool cooldown   150
 
-${B}── Файлы на VPS ────────────────────────────────────────────────────────${N}
-  ${WG_CONF}
-  ${SERVICE_PATH}
-  ${CLIENT_CONF}
+Затем заполните раздел WireGuard:
+  Server public key    ${C}${SERVER_PUB_DISPLAY}${N}
+  Client private key   ${C}${CLIENT_PRIV_DISPLAY}${N}
+  Preshared key        ${C}${CLIENT_PSK_DISPLAY}${N}
+  Client address       ${C}${WG_CLIENT_IP}/32${N}
+  DNS                  ${C}${DNS_SERVERS}${N}
+  Endpoint             ${C}127.0.0.1:${LOCAL_PROXY_PORT}${N}
+  AllowedIPs           ${C}0.0.0.0/0${N}
+  MTU                  ${C}${CLIENT_MTU}${N}
+
+Ключи WireGuard берутся из файла ${C}${CLIENT_CONF}${N}.
+Не отправляйте этот файл и ключи другим людям.
+
+Порядок: сохраните настройки → запустите proxy и дождитесь
+${C}Established DTLS connection${N} → включите VPN.
+Если интернета нет, проверьте на VPS ${C}wg show ${WG_IFACE}${N}:
+должны быть latest handshake и ненулевые RX/TX.
 EOF
